@@ -1,0 +1,109 @@
+---
+title: "Machine Learning Course Project"
+author: "Jim Staib"
+date: "June 26, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+suppressMessages(library(parallel))
+suppressMessages(library(doParallel))
+suppressMessages(library(caret))
+```
+
+## Overview
+The goal of this project is to make qualitative predictions as to how well participants in the Weight Lifting Exercise (Velloso, 2013) dataset performed certain exercises.   Quality is determined based on comparing data collected from a wearable accelerometer with data collected from other participants who were also observed and rated during exercise.   The test participants both performed lifts correctly and incorrectly to gather data showing positive and negative results.
+
+
+## Data
+
+
+Training and test data sets for this project were downloaded from the following locations.
+
+Training
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+Test
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+```{r download}
+
+fileURLTrain <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+fileURLTest <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+download.file(fileURLTrain, destfile = "pml-training.csv")
+download.file(fileURLTest, destfile = "pml-testing.csv")
+
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+```
+
+After downloading and reading training and test files to dataframes, columns with na values were removed and the training data set split for training and testing.   The testing data set was reserved for validation purposes.
+
+
+```{r pickcolumns}
+col.na <- colSums(sapply(training, is.na))
+col.na.test <- colSums(sapply(testing, is.na))
+
+training <- training[,col.na == 0 & col.na.test == 0]
+testing <- testing[,col.na == 0 & col.na.test == 0]
+
+inTrain <- createDataPartition(training$classe, p=3/4, list=FALSE)
+trainset <- training[inTrain, ]
+testset <- training[-inTrain, ]                
+                
+```
+
+## Cross Validation and Training
+
+In an attempt to avoid bias in the training, 10-fold cross validation was used in running random forest modeling on 75% of the WLE training data set.  This process trains the model 10 times.    Each time it holds out 10% of the data while training on the other 90%.    
+
+Use of the Parallel and DoParallel packages was to improve performance by using multiple cores for execution.    The Random Forest method was used as this method commonly produces highly accurate results 
+
+
+```{r train}
+cluster<-makeCluster(detectCores()-1) ## leaving one for OS
+registerDoParallel(cluster)
+fitcontrol<-trainControl(method="cv",number=10,allowParallel = TRUE) 
+model<-train(classe~.,data=trainset,method="rf",trControl=fitcontrol)
+stopCluster(cluster)
+registerDoSEQ()
+
+```
+
+
+## Accuracy
+
+Accuracy was measured in two ways.   First, the accuracy was observed by printing the model generated.   This indicated 99.98% accuracy.
+
+```{r printmodel}
+print(model)
+```
+
+To confirm this observation, predictions were made on the remaining 25% of the WLE training data set that was held out of the initial training.    The predictions were compared to the observed values via a confusion matrix.  
+
+```{r predict}
+predictRf <- predict(model, testset)
+confusionMatrix(testset$classe, predictRf)
+```
+
+
+## Conclusion
+
+The confusion matrix above shows that the out of sample error rate is zero.    When predicting from a model created from 75% of the training sample using the remaining 25%, all 4,904 records in the held back portion of the training data set were predicted correctly.
+
+
+# Reference
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013. 
+
+
+
